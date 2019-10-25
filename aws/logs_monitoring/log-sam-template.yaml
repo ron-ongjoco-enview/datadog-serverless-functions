@@ -1,17 +1,60 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Pushes logs and metrics from AWS to Datadog.
+Description: Pushes logs, metrics and traces from AWS to Datadog.
+Parameters:
+  DdApiKey:
+    Type: String
+    NoEcho: true
+    AllowedPattern: '[0-9a-f]{32}'
+    ConstraintDescription: DdApiKey must match pattern [0-9a-f]{32}
+    Description: The Datadog API key for your Datadog platform
+  DdSite:
+    Type: String
+    Default: datadoghq.com
+    AllowedValues: 
+      - datadoghq.com
+      - datadoghq.eu
+    ConstraintDescription: DdSite must be datadoghq.com or datadoghq.eu
+    Description: By default, the forwarder sends data to datadoghq.com. Set DdSite to datadoghq.eu to send data to the Datadog EU site.
+  DdTags:
+    Type: String
+    Default: ''
+    Description: Optionally add custom tags to the forwarded log entries, e.g., env:prod,stack:classic
+  FunctionName:
+    Type: String
+    Default: ''
+    Description: Optionally overrides the name for the Datadog Forwarder Lambda function
+  ReservedConcurrency:
+    Type: Number
+    Default: 100
+    Description: Reserved concurrency for the Datadog Forwarder Lambda function
+  LogRetentionInDays:
+    Type: Number
+    Default: 90
+    Description: Retention of logs for the Datadog Forwarder Lambda function
+Conditions:
+  CustomFunctionName: !Not [!Equals [!Ref FunctionName, '']]
 Resources:
-  loglambdaddfunction:
+  DatadogForwarder:
     Type: 'AWS::Serverless::Function'
     Properties:
-      Description: Pushes logs and metrics from AWS to Datadog.
+      FunctionName: !If [CustomFunctionName, !Ref FunctionName, !Ref AWS::NoValue]
+      Description: Pushes logs, metrics and traces from AWS to Datadog.
       Handler: lambda_function.lambda_handler
       MemorySize: 1024
-      Runtime: python2.7
+      Runtime: python3.7
       Timeout: 120
       Layers:
-        - !Sub 'arn:aws:lambda:${AWS::Region}:464622532012:layer:Datadog-Python27:3'
-        - !Sub 'arn:aws:lambda:${AWS::Region}:464622532012:layer:Datadog-Trace-Forwarder-Python27:1'
-
-    Type: AWS::Serverless::Function
+        - !Sub 'arn:aws:lambda:${AWS::Region}:464622532012:layer:Datadog-Python37:8'
+        - !Sub 'arn:aws:lambda:${AWS::Region}:464622532012:layer:Datadog-Trace-Forwarder-Python37:1'
+      Environment:
+        Variables:
+          DD_API_KEY: !Ref DdApiKey
+          DD_SITE: !Ref DdSite
+          DD_TAGS: !Ref DdTags
+      ReservedConcurrentExecutions: !Ref ReservedConcurrency
+  LogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${DatadogForwarder}'
+      RetentionInDays: !Ref LogRetentionInDays
